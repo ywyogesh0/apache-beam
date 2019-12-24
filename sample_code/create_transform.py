@@ -11,6 +11,7 @@ num_dict = {
     'odd': [1, 3, 5, 7, 9]
 }
 
+# apache_beam.pipeline.Pipeline
 # apache_beam.pvalue.PCollection
 
 (
