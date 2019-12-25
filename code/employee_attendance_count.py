@@ -36,8 +36,8 @@ class HRFilter(beam.DoFn):
         pass
 
 
-# AccountsCount - DoFn
-class AccountsCount(beam.DoFn):
+# Sum - DoFn
+class Sum(beam.DoFn):
 
     def process(self, element, *args, **kwargs):
         key, values = element
@@ -45,6 +45,37 @@ class AccountsCount(beam.DoFn):
 
     def to_runner_api_parameter(self, unused_context):
         pass
+
+
+# format output
+def format_output(element):
+    emp_key_tuple, att_count = element
+    dept_name, emp_id, emp_name = emp_key_tuple
+    return ", ".join((dept_name, emp_id, emp_name, str(att_count)))
+
+
+# Composite Transform - PTransform
+class Count(beam.PTransform):
+
+    def expand(self, input_or_inputs):
+        avg_collection = (
+                input_or_inputs
+
+                | "Group by key" >>
+                beam.GroupByKey()
+
+                | "Sum" >>
+                beam.ParDo(Sum())
+        )
+
+        return avg_collection
+
+
+# Map unicode to ascii
+def unicode_to_ascii(element):
+    for index in range(len(element)):
+        element[index] = str(element[index])
+    return element
 
 
 with beam.Pipeline() as attendance_count_pipeline:
@@ -56,6 +87,9 @@ with beam.Pipeline() as attendance_count_pipeline:
 
             | "Split row on ',' delimiter" >>
             beam.ParDo(SplitRow())
+
+            | "Map unicode to ascii" >>
+            beam.Map(unicode_to_ascii)
     )
 
     accounts_pcollection = (
@@ -67,11 +101,7 @@ with beam.Pipeline() as attendance_count_pipeline:
             | "Create 'Accounts' Tuple (key, value) with key -> (Id, Name) and value -> 1" >>
             beam.ParDo(lambda filtered_row_arr: [(("Accounts", filtered_row_arr[0], filtered_row_arr[1]), 1)])
 
-            | "'Accounts' -> Group by key" >>
-            beam.GroupByKey()
-
-            | "'Accounts' -> Count" >>
-            beam.ParDo(AccountsCount())
+            | "'Accounts' -> Count" >> Count()
     )
 
     hr_pcollection = (
@@ -83,8 +113,7 @@ with beam.Pipeline() as attendance_count_pipeline:
             | "Create 'HR' Tuple (key, value) with key -> (Id, Name) and value -> 1" >>
             beam.ParDo(lambda filtered_row_arr: [(("HR", filtered_row_arr[0], filtered_row_arr[1]), 1)])
 
-            | "'HR' -> GroupByKey + Combiner (optimization) + Reducer (sum)" >>
-            beam.CombinePerKey(sum)
+            | "'HR' -> Count" >> Count()
     )
 
     merged_pcollection = (
@@ -93,6 +122,10 @@ with beam.Pipeline() as attendance_count_pipeline:
             | "Merge both PCollection object elements to create single unified PCollection object" >>
             beam.Flatten()
 
+            | "Format output" >>
+            beam.Map(format_output)
+
             | "Write each element of merged PCollection Object" >>
-            beam.io.WriteToText("attendance_count_output/count")
+            beam.io.WriteToText(file_path_prefix="attendance_count_output/count",
+                                header="dept_name, emp_id, emp_name, att_count")
     )

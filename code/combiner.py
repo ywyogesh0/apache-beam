@@ -3,6 +3,7 @@ from abc import ABCMeta
 import apache_beam as beam
 
 
+# Advanced Combiner - CombineFn
 class Combiner(beam.CombineFn):
     __metaclass__ = ABCMeta
 
